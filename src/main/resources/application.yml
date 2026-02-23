@@ -1,0 +1,8 @@
+server:
+  port: 9070
+  servlet:
+    context-path: /orderStat  # ??????
+spring:
+  application:
+    name: order-stat-service
+
