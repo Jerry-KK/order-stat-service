@@ -1,11 +1,18 @@
 package cn.lethekk.orderstatservice.entity;
 
+import lombok.Builder;
+import lombok.Getter;
+import lombok.Setter;
+
 import java.time.LocalDateTime;
 
 /**
  * @Author Lethekk
  * @Date 2026/2/23 22:33
  */
+@Getter
+@Setter
+@Builder
 //订单统计业务实体类
 public class OrderStatBO {
 

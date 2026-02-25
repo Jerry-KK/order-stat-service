@@ -1,13 +1,17 @@
 package cn.lethekk.orderstatservice.entity;
 
-import lombok.Data;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.Setter;
 
 /**
  * @Author Lethekk
  * @Date 2026/2/23 22:27
  */
 //订单MQ消息
-@Data
+@Getter
+@Setter
+@Builder
 public class OrderEvent {
 
     /** 订单ID */
