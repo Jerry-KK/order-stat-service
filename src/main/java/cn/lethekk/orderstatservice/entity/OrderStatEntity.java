@@ -1,8 +1,6 @@
 package cn.lethekk.orderstatservice.entity;
 
-import lombok.Builder;
-import lombok.Getter;
-import lombok.Setter;
+import lombok.*;
 
 import java.time.LocalDateTime;
 
@@ -13,6 +11,8 @@ import java.time.LocalDateTime;
 @Getter
 @Setter
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 //订单统计数据库实体类
 public class OrderStatEntity {
     /** 订单创建时间 */

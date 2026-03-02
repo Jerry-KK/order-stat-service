@@ -23,6 +23,7 @@ public class OrderStatMerge {
         Map<String, OrderStatBO> statMap = threadLocalMap.get();
         String key = orderStat.getUnionKey();
         OrderStatBO value = statMap.get(key);
+        //todo Optional优化
         if (value == null) {
             statMap.put(key, orderStat);
         } else {

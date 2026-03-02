@@ -1,6 +1,7 @@
 package cn.lethekk.orderstatservice.repository;
 
 import cn.lethekk.orderstatservice.entity.OrderStatEntity;
+import org.springframework.stereotype.Repository;
 
 import java.util.List;
 
@@ -8,10 +9,9 @@ import java.util.List;
  * @Author Lethekk
  * @Date 2026/2/25 22:44
  */
-public class OrderStatMapper {
+@Repository
+public interface OrderStatMapper {
 
-    int insertList(List<OrderStatEntity> entityList) {
-        return 0;
-    }
+    int insertList(List<OrderStatEntity> entityList);
 
 }

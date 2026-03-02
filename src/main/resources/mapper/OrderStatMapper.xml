@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="cn.lethekk.orderstatservice.repository.OrderStatMapper">
+
+    <insert id="insertList" parameterType="java.util.List">
+        INSERT INTO order_stat (dateTime, shopId, userId, orderCount, shopName, userName, vip)
+        VALUES
+        <foreach collection="list" item="e" separator=",">
+            (#{e.dateTime}, #{e.shopId}, #{e.userId}, #{e.orderCount}, #{e.shopName}, #{e.userName}, #{e.vip})
+        </foreach>
+        ON DUPLICATE KEY UPDATE
+        orderCount = orderCount + VALUES(orderCount)
+    </insert>
+
+</mapper>
