@@ -2,6 +2,7 @@ package cn.lethekk.orderstatservice.server.stat;
 
 import cn.lethekk.orderstatservice.entity.*;
 import cn.lethekk.orderstatservice.repository.OrderStatMapper;
+import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -26,7 +27,7 @@ public class OrderStatWriteService {
     /**
      * 落库线程池:io阻塞，压力在DB
      */
-    private static final ThreadPoolExecutor writeExecutor = new ThreadPoolExecutor(1, 1, 1, TimeUnit.SECONDS, new ArrayBlockingQueue<>(100),
+    private final ThreadPoolExecutor writeExecutor = new ThreadPoolExecutor(1, 1, 1, TimeUnit.SECONDS, new ArrayBlockingQueue<>(100),
             new ThreadFactory() {
                 private final AtomicInteger threadNumber = new AtomicInteger(1);
 
@@ -54,5 +55,22 @@ public class OrderStatWriteService {
         OrderStatEntity entity = new OrderStatEntity();
         BeanUtils.copyProperties(bo, entity);
         return entity;
+    }
+
+    @PreDestroy
+    public void shutdown() {
+        log.info("OrderStatWriteService 正在关闭，准备停止线程池writeExecutor...");
+        writeExecutor.shutdown(); // 拒绝新任务
+        try {
+            // 等待旧任务执行完，这里可以根据业务重要性设置等待时间
+            if (!writeExecutor.awaitTermination(60, TimeUnit.SECONDS)) {
+                log.info("writeExecutor线程池关闭超时，尝试强制关闭");
+                writeExecutor.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            writeExecutor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+        log.info("writeExecutor线程池已安全关闭");
     }
 }
