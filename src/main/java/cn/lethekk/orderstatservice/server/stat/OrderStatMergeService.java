@@ -2,6 +2,7 @@ package cn.lethekk.orderstatservice.server.stat;
 
 import cn.lethekk.orderstatservice.entity.OrderStatBO;
 import cn.lethekk.orderstatservice.util.ThreadNumUtil;
+import cn.lethekk.orderstatservice.util.ThreadPoolUtil;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
@@ -83,25 +84,9 @@ public class OrderStatMergeService {
     // 2. 自定义销毁逻辑
     @PreDestroy
     public void shutdown() {
+        scheduler.shutdownNow();
         submitMergerData();
-        log.info("OrderStatMergeService 正在关闭，准备停止线程池mergerExecutorList...");
-        mergerExecutorList.forEach(mergerExecutor -> mergerExecutor.shutdown());
-        mergerExecutorList.forEach(mergerExecutor -> {
-            try {
-                // 等待旧任务执行完，这里可以根据业务重要性设置等待时间
-                if (!mergerExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
-                    log.info("mergerExecutor线程池关闭超时，尝试强制关闭");
-                    mergerExecutor.shutdownNow();
-                }
-            } catch (InterruptedException e) {
-                mergerExecutor.shutdownNow();
-                Thread.currentThread().interrupt();
-            }
-            log.info("mergerExecutorList线程池已安全关闭");
-        });
-        log.info("准备停止线程池scheduler...");
-        scheduler.shutdownNow(); // 拒绝新任务
-        log.info("scheduler线程池已安全关闭");
+        ThreadPoolUtil.shutdownPools(mergerExecutorList, "mergerExecutorList", 5);
     }
 
 }

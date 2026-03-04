@@ -5,6 +5,7 @@ import cn.lethekk.orderstatservice.entity.OrderInfoDTO;
 import cn.lethekk.orderstatservice.entity.OrderStatBO;
 import cn.lethekk.orderstatservice.entity.UserInfoDTO;
 import cn.lethekk.orderstatservice.util.ThreadNumUtil;
+import cn.lethekk.orderstatservice.util.ThreadPoolUtil;
 import cn.lethekk.orderstatservice.util.TimestampConverterUtil;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
@@ -75,19 +76,7 @@ public class OrderStatService {
     // 2. 自定义销毁逻辑
     @PreDestroy
     public void shutdown() {
-        log.info("OrderStatService 正在关闭，准备停止线程池queryExecutor...");
-        queryExecutor.shutdown(); // 拒绝新任务
-        try {
-            // 等待旧任务执行完，这里可以根据业务重要性设置等待时间
-            if (!queryExecutor.awaitTermination(10, TimeUnit.SECONDS)) {
-                log.info("queryExecutor线程池关闭超时，尝试强制关闭");
-                queryExecutor.shutdownNow();
-            }
-        } catch (InterruptedException e) {
-            queryExecutor.shutdownNow();
-            Thread.currentThread().interrupt();
-        }
-        log.info("queryExecutor线程池已安全关闭");
+        ThreadPoolUtil.shutdownGracefully(queryExecutor, "QueryPool", 10);
     }
 
     /**
