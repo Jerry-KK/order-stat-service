@@ -71,7 +71,7 @@ public class OrderStatQueryService {
         CompletableFuture<UserInfoDTO> futureUser = CompletableFuture
                 .supplyAsync(() -> rpcUserQuery(event.getUserId()), queryExecutor)
                 .orTimeout(2, TimeUnit.SECONDS)
-                .handle((res, ex) -> ex == null ? res : defaultUserInfo(event.getUserId()));    //降级处理
+                .exceptionally(ex -> fallbackRpcUserQuery(event.getUserId(), ex));    //降级处理
         //上述2个异步查询完成时生成bo对象
         CompletableFuture<OrderStatBO> futureOrderStat = futureOrder.thenCombine(futureUser, (order, user) -> convert(event, order, user));
         //完成后提交bo
@@ -88,7 +88,9 @@ public class OrderStatQueryService {
         ThreadPoolUtil.shutdownGracefully(queryExecutor, "QueryPool", 10);
     }
 
-    private UserInfoDTO defaultUserInfo(Long userId) {
+    //rpcUserQuery降级逻辑
+    private UserInfoDTO fallbackRpcUserQuery(Long userId, Throwable ex) {
+        log.warn("调用rpUserQuery出错,执行降级逻辑,userId={}", userId, ex);
         return UserInfoDTO.builder()
                 .id(userId)
                 .name("")
