@@ -56,7 +56,7 @@
 | 线程池模型 | 单一线程池             | 按任务场景拆分              |
 
 # 5. 待实现优化点
-- CompletableFuture异常、超时处理
+- CompletableFuture超时控制、异常处理 (完成)
 - 线程池队列长度，以及触发拒绝策略时保证数据正确，背压
 - TTL (TransmittableThreadLocal)
 - 并发调用下游服务需要考虑限流

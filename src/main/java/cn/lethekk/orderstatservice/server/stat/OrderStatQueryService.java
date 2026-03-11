@@ -1,5 +1,7 @@
 package cn.lethekk.orderstatservice.server.stat;
 
+import cn.lethekk.orderstatservice.common.exception.BizException;
+import cn.lethekk.orderstatservice.common.exception.ErrorCode;
 import cn.lethekk.orderstatservice.entity.OrderEvent;
 import cn.lethekk.orderstatservice.entity.OrderInfoDTO;
 import cn.lethekk.orderstatservice.entity.OrderStatBO;
@@ -24,7 +26,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 @Service
 @Slf4j
-public class OrderStatService {
+public class OrderStatQueryService {
 
     @Autowired
     private OrderStatMergeService mergeService;
@@ -59,24 +61,39 @@ public class OrderStatService {
      */
     //处理event
     public void eventHandle(OrderEvent event) {
-        log.info("异步查询订单服务");
+        Long orderId = event.getOrderId();
         //异步查询订单服务
-        CompletableFuture<OrderInfoDTO> futureOrder = CompletableFuture.supplyAsync(() -> rpcOrderQuery(event.getOrderId()), queryExecutor);
-        log.info("异步查询用户服务");
+        CompletableFuture<OrderInfoDTO> futureOrder = CompletableFuture
+                .supplyAsync(() -> rpcOrderQuery(orderId), queryExecutor)
+                .orTimeout(3, TimeUnit.SECONDS)
+                .exceptionally(ex -> { throw new BizException(ErrorCode.BIZ_ERROR, "调用rpcOrderQuery出错,orderId=" + orderId, ex); }); //包裹成业务异常抛出
         //异步查询用户服务
-        CompletableFuture<UserInfoDTO> futureUser = CompletableFuture.supplyAsync(() -> rpcUserQuery(event.getUserId()), queryExecutor);
-        log.info("上述2个异步查询完成时生成bo对象");
+        CompletableFuture<UserInfoDTO> futureUser = CompletableFuture
+                .supplyAsync(() -> rpcUserQuery(event.getUserId()), queryExecutor)
+                .orTimeout(2, TimeUnit.SECONDS)
+                .handle((res, ex) -> ex == null ? res : defaultUserInfo(event.getUserId()));    //降级处理
         //上述2个异步查询完成时生成bo对象
         CompletableFuture<OrderStatBO> futureOrderStat = futureOrder.thenCombine(futureUser, (order, user) -> convert(event, order, user));
-        log.info("完成后提交bo");
         //完成后提交bo
-        futureOrderStat.thenAccept(bo -> mergeService.handle(bo));
+        futureOrderStat.thenAccept(bo -> mergeService.handle(bo))
+                .exceptionally(ex -> {
+                    log.error("eventHandle exception,标识:{}", orderId, ex);
+                    return null;
+                });
     }
 
     // 2. 自定义销毁逻辑
     @PreDestroy
     public void shutdown() {
         ThreadPoolUtil.shutdownGracefully(queryExecutor, "QueryPool", 10);
+    }
+
+    private UserInfoDTO defaultUserInfo(Long userId) {
+        return UserInfoDTO.builder()
+                .id(userId)
+                .name("")
+                .vip(false)
+                .build();
     }
 
     /**
