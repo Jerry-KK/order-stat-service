@@ -31,18 +31,22 @@ public class OrderStatQueryService {
     @Autowired
     private OrderStatMergeService mergeService;
 
-
+    /*
     //期望的CPU利用率
     private static final int cpuUse = 80;
     //等待时间与计算时间比率
     private static final int W_C_Prop = 99;
     private static final int threadNum = ThreadNumUtil.computeThreadNum(cpuUse, W_C_Prop);
+    */
+
+    //I/O密集型任务，先从cpuNum*2开始测。如果CPU占用率上不去，再增加线程数。
+    private static final int threadNum = ThreadNumUtil.getCpuNum() * 2;
 
 
     /**
      * 外部查询线程池:网络阻塞
      */
-    private final ThreadPoolExecutor queryExecutor = new ThreadPoolExecutor(threadNum, threadNum, 1, TimeUnit.SECONDS, new ArrayBlockingQueue<>(5000),
+    private final ThreadPoolExecutor queryExecutor = new ThreadPoolExecutor(threadNum, threadNum, 1, TimeUnit.SECONDS, new ArrayBlockingQueue<>(256),
             new ThreadFactory() {
 
                 private final AtomicInteger threadNumber = new AtomicInteger(1);
@@ -65,12 +69,12 @@ public class OrderStatQueryService {
         //异步查询订单服务
         CompletableFuture<OrderInfoDTO> futureOrder = CompletableFuture
                 .supplyAsync(() -> rpcOrderQuery(orderId), queryExecutor)
-                .orTimeout(3, TimeUnit.SECONDS)
+                .orTimeout(500, TimeUnit.MILLISECONDS)
                 .exceptionally(ex -> { throw new BizException(ErrorCode.BIZ_ERROR, "调用rpcOrderQuery出错,orderId=" + orderId, ex); }); //包裹成业务异常抛出
         //异步查询用户服务
         CompletableFuture<UserInfoDTO> futureUser = CompletableFuture
                 .supplyAsync(() -> rpcUserQuery(event.getUserId()), queryExecutor)
-                .orTimeout(2, TimeUnit.SECONDS)
+                .orTimeout(500, TimeUnit.MILLISECONDS)
                 .exceptionally(ex -> fallbackRpcUserQuery(event.getUserId(), ex));    //降级处理
         //上述2个异步查询完成时生成bo对象
         CompletableFuture<OrderStatBO> futureOrderStat = futureOrder.thenCombine(futureUser, (order, user) -> convert(event, order, user));
@@ -85,7 +89,7 @@ public class OrderStatQueryService {
     // 2. 自定义销毁逻辑
     @PreDestroy
     public void shutdown() {
-        ThreadPoolUtil.shutdownGracefully(queryExecutor, "QueryPool", 10);
+        ThreadPoolUtil.shutdownGracefully(queryExecutor, "QueryPool", 3);
     }
 
     //rpcUserQuery降级逻辑

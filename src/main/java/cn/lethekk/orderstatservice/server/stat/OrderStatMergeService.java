@@ -34,7 +34,7 @@ public class OrderStatMergeService {
     {
         for (int i = 0; i < threadNum; i++) {
             int idx = i;
-            mergerExecutorList.add(new ThreadPoolExecutor(1, 1, 1, TimeUnit.SECONDS, new ArrayBlockingQueue<>(1000),
+            mergerExecutorList.add(new ThreadPoolExecutor(1, 1, 1, TimeUnit.SECONDS, new ArrayBlockingQueue<>(20),
                     new ThreadFactory() {
                         @Override
                         public Thread newThread(Runnable r) {
@@ -86,7 +86,7 @@ public class OrderStatMergeService {
     public void shutdown() {
         scheduler.shutdownNow();
         submitMergerData();
-        ThreadPoolUtil.shutdownPools(mergerExecutorList, "mergerExecutorList", 5);
+        ThreadPoolUtil.shutdownPools(mergerExecutorList, "mergerExecutorList", 1);
     }
 
 }

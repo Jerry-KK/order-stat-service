@@ -2,6 +2,7 @@ package cn.lethekk.orderstatservice.server.stat;
 
 import cn.lethekk.orderstatservice.entity.*;
 import cn.lethekk.orderstatservice.repository.OrderStatMapper;
+import cn.lethekk.orderstatservice.util.ThreadNumUtil;
 import cn.lethekk.orderstatservice.util.ThreadPoolUtil;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
@@ -28,7 +29,7 @@ public class OrderStatWriteService {
     /**
      * 落库线程池:io阻塞，压力在DB
      */
-    private final ThreadPoolExecutor writeExecutor = new ThreadPoolExecutor(1, 1, 1, TimeUnit.SECONDS, new ArrayBlockingQueue<>(100),
+    private final ThreadPoolExecutor writeExecutor = new ThreadPoolExecutor(1, 1, 1, TimeUnit.SECONDS, new ArrayBlockingQueue<>(ThreadNumUtil.getCpuNum()),
             new ThreadFactory() {
                 private final AtomicInteger threadNumber = new AtomicInteger(1);
 
@@ -48,7 +49,7 @@ public class OrderStatWriteService {
         AtomicInteger index = new AtomicInteger();
         list.stream()
                 .map(this::convert)
-                .collect(Collectors.groupingBy(it -> index.getAndIncrement() / 100))
+                .collect(Collectors.groupingBy(it -> index.getAndIncrement() / 200))
                 .forEach((batchIdx, eList) -> mapper.insertList(eList)); //todo 判空，似乎只要参数list不为空这里就不会空指针
     }
 
@@ -60,6 +61,6 @@ public class OrderStatWriteService {
 
     @PreDestroy
     public void shutdown() {
-        ThreadPoolUtil.shutdownGracefully(writeExecutor, "writeExecutor", 60);
+        ThreadPoolUtil.shutdownGracefully(writeExecutor, "writeExecutor", 3);
     }
 }
