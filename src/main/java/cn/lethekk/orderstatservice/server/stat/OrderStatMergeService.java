@@ -90,8 +90,54 @@ public class OrderStatMergeService {
     @PreDestroy
     public void shutdown() {
         scheduler.shutdownNow();
-        submitMergerData();
-        ThreadPoolUtil.shutdownPools(mergerExecutorList, "mergerExecutorList", 1);
+        //向每个 merger 池提交最终 flush，阻塞直到入队成功
+        mergerExecutorList.forEach(this::submitShutdownFlush);
+        ThreadPoolUtil.shutdownPools(mergerExecutorList, "mergerExecutorList", 5);
+    }
+
+    /**
+     * 停机路径专用：阻塞重试直到 flush 任务入队成功。
+     * 停机时上游不再产生新任务，队列很快有空位，不会死循环。
+     */
+    private void submitShutdownFlush(ThreadPoolExecutor executor) {
+        for (int i = 0; i < 20 && !Thread.currentThread().isInterrupted(); i++) {
+            try {
+                executor.execute(this::shutdownTask);
+                return;
+            } catch (RejectedExecutionException e) {
+                log.warn("停机 flush 入队被拒，第{}/20次重试", i + 1);
+                try {
+                    Thread.sleep(100);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+            }
+        }
+        log.error("CRITICAL: flush 入队失败，merger数据未落库");
+    }
+
+    private void shutdownTask() {
+        List<OrderStatBO> orderStatBOS = OrderStatMerge.takeALLData();
+        log.info("flush task size:{}", orderStatBOS.size());
+        if (orderStatBOS.isEmpty()) {
+            return;
+        }
+        for (int i = 0; i < 10  && !Thread.currentThread().isInterrupted(); i++) {
+            if (writeService.handle(orderStatBOS)) {
+                OrderStatMerge.clearData();
+                return;
+            } else {
+                log.warn("write层队列满，flush 重试 {}/10", i + 1);
+                try {
+                    Thread.sleep(200L);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        }
+        log.error("CRITICAL: flush 写入失败，数据未落库! size:{}", orderStatBOS.size());
+        // TODO: 发死信队列
     }
 
 }
