@@ -12,7 +12,6 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 /**
@@ -33,20 +32,26 @@ public class OrderStatWriteService {
             1, 1, 1, TimeUnit.SECONDS,
             new ArrayBlockingQueue<>(ThreadNumUtil.getCpuNum()),
             ThreadPoolUtil.namedThreadFactory("writePool"),
-            new ThreadPoolExecutor.CallerRunsPolicy());
+            new ThreadPoolExecutor.AbortPolicy());
 
     //异步非阻塞
-    public void handle(List<OrderStatBO> list) {
-        log.info("Write handle");
-        writeExecutor.submit(() -> task(list));
+    public boolean handle(List<OrderStatBO> list) {
+        try {
+            writeExecutor.execute(() -> task(list));
+        } catch (RejectedExecutionException e) {
+            log.error("write层队列满", e);
+            return false;
+        }
+        return true;
     }
 
     private void task(List<OrderStatBO> list) {
-        AtomicInteger index = new AtomicInteger();
+        int[] idx = {0};
         list.stream()
                 .map(this::convert)
-                .collect(Collectors.groupingBy(it -> index.getAndIncrement() / 200))
-                .forEach((batchIdx, eList) -> mapper.insertList(eList)); //todo 判空，似乎只要参数list不为空这里就不会空指针
+                .collect(Collectors.groupingBy(it -> idx[0]++ / 200))
+                .forEach((batchIdx, eList) -> mapper.insertList(eList));
+        log.info("write task finish. size:{}", list.size());
     }
 
     private OrderStatEntity convert(OrderStatBO bo) {

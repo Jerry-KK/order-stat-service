@@ -33,9 +33,12 @@ public class OrderStatMerge {
 
     //取出全部数据并更新时间
     public static List<OrderStatBO> takeALLData() {
-        List<OrderStatBO> orderStatList = new ArrayList<>(threadLocalMap.get().values());
-        threadLocalMap.remove();
-        return orderStatList;
+        return new ArrayList<>(threadLocalMap.get().values());
+    }
+
+    //清空数据
+    public static void clearData() {
+        threadLocalMap.get().clear();
     }
 
 }

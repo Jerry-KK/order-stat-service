@@ -37,7 +37,7 @@ public class OrderStatMergeService {
                     1, 1, 1, TimeUnit.SECONDS,
                     new ArrayBlockingQueue<>(20),
                     ThreadPoolUtil.namedThreadFactory("mergerPool:" + i),
-                    new ThreadPoolExecutor.AbortPolicy())); //避免CallerRunsPolicy传递阻塞
+                    new ThreadPoolExecutor.AbortPolicy()));
         }
     }
 
@@ -52,15 +52,18 @@ public class OrderStatMergeService {
     }
 
     private void submitMergerData() {
-        mergerExecutorList.forEach(mergerExecutor -> mergerExecutor.submit(this::task));
-
+        mergerExecutorList.forEach(mergerExecutor -> mergerExecutor.execute(this::task));
     }
 
     private void task() {
         List<OrderStatBO> orderStatBOS = OrderStatMerge.takeALLData();
         log.info("定时任务task size:{}", orderStatBOS.size());
-        if (!orderStatBOS.isEmpty()) {
-            writeService.handle(orderStatBOS);
+        if (orderStatBOS.isEmpty()) {
+            return;
+        }
+        if(writeService.handle(orderStatBOS)) {
+            //仅提交成功时清除数据
+            OrderStatMerge.clearData();
         }
     }
 
@@ -71,11 +74,16 @@ public class OrderStatMergeService {
      *
      * @param bo
      */
-    public void handle(OrderStatBO bo) {
-        //解决计算结果为负数问题: 先对userId位运算取后几位即可，保证了结果不会出现负数，可能取2的6次方即64就够了，一般cpu核心数不会超过64
-        int threadIdx = (int) ((bo.getUserId() & 63L) % threadNum);
-        mergerExecutorList.get(threadIdx).submit(() -> OrderStatMerge.addThenMerge(bo));
-        log.info("聚合处理BO对象, threadIdx : {}", threadIdx);
+    public boolean handle(OrderStatBO bo) {
+        int threadIdx = (int) (bo.getUserId() % threadNum);
+        ThreadPoolExecutor executor = mergerExecutorList.get(threadIdx);
+        try {
+            executor.execute(() -> OrderStatMerge.addThenMerge(bo));
+        } catch (RejectedExecutionException e) {
+            log.error("merge层队第{}个线程列满", threadIdx, e);
+            return false;
+        }
+        return true;
     }
 
     // 2. 自定义销毁逻辑

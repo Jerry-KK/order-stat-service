@@ -18,7 +18,6 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * @Author Lethekk
@@ -31,24 +30,15 @@ public class OrderStatQueryService {
     @Autowired
     private OrderStatMergeService mergeService;
 
-    /*
-    //期望的CPU利用率
-    private static final int cpuUse = 80;
-    //等待时间与计算时间比率
-    private static final int W_C_Prop = 99;
-    private static final int threadNum = ThreadNumUtil.computeThreadNum(cpuUse, W_C_Prop);
-    */
-
     //I/O密集型任务，先从cpuNum*2开始测。如果CPU占用率上不去，再增加线程数。
     private static final int threadNum = ThreadNumUtil.getCpuNum() * 2;
-
 
     /**
      * 外部查询线程池:网络阻塞
      */
     private final ThreadPoolExecutor queryExecutor = new ThreadPoolExecutor(
             threadNum, threadNum, 1, TimeUnit.SECONDS,
-            new ArrayBlockingQueue<>(120),
+            new ArrayBlockingQueue<>(60),
             ThreadPoolUtil.namedThreadFactory("queryPool"),
             new ThreadPoolExecutor.CallerRunsPolicy());//CallerRunsPolicy天然背压
 
@@ -74,7 +64,7 @@ public class OrderStatQueryService {
         //上述2个异步查询完成时生成bo对象
         CompletableFuture<OrderStatBO> futureOrderStat = futureOrder.thenCombine(futureUser, (order, user) -> convert(event, order, user));
         //完成后提交bo
-        futureOrderStat.thenAccept(bo -> mergeService.handle(bo))
+        futureOrderStat.thenAccept(this::submitToMerger)
                 .exceptionally(ex -> {
                     log.error("eventHandle exception,标识:{}", orderId, ex);
                     return null;
@@ -84,7 +74,27 @@ public class OrderStatQueryService {
     // 2. 自定义销毁逻辑
     @PreDestroy
     public void shutdown() {
-        ThreadPoolUtil.shutdownGracefully(queryExecutor, "QueryPool", 3);
+        ThreadPoolUtil.shutdownGracefully(queryExecutor, "QueryPool", 5);
+    }
+
+    private void submitToMerger(OrderStatBO bo) {
+        int maxRetries = 3;
+        long sleepMs = 100; // 初始休眠 100ms
+        for (int i = 0; i < maxRetries; i++) {
+            if(mergeService.handle(bo)) {
+                return; // 提交成功，直接返回
+            }
+            log.warn("submit failed, retrying {}/{}... sleep {}ms", i + 1, maxRetries, sleepMs);
+            try {
+                Thread.sleep(sleepMs);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+            }
+            sleepMs *= 2; // 指数退避：100 -> 200 -> 400
+        }
+        // 最终失败处理
+        log.error("CRITICAL: Task dropped after {} retries. userId: {}", maxRetries, bo.getUserId());
+        //todo 将bo对象发送到死信队列
     }
 
     //rpcUserQuery降级逻辑
@@ -112,7 +122,6 @@ public class OrderStatQueryService {
                 .note("success")
                 .build();
     }
-
 
     /**
      * 远程调用用户服务
@@ -154,11 +163,11 @@ public class OrderStatQueryService {
      */
     public void mockDelay() {
         try {
-            TimeUnit.SECONDS.sleep(1L);
+            long delay = ThreadLocalRandom.current().nextLong(50L, 520L);
+            TimeUnit.MILLISECONDS.sleep(delay);
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
     }
-
 
 }
