@@ -33,14 +33,11 @@ public class OrderStatMergeService {
 
     {
         for (int i = 0; i < threadNum; i++) {
-            int idx = i;
-            mergerExecutorList.add(new ThreadPoolExecutor(1, 1, 1, TimeUnit.SECONDS, new ArrayBlockingQueue<>(20),
-                    new ThreadFactory() {
-                        @Override
-                        public Thread newThread(Runnable r) {
-                            return new Thread(r, "mergerPool-" + idx);
-                        }
-                    }, new ThreadPoolExecutor.AbortPolicy())); //避免CallerRunsPolicy传递阻塞
+            mergerExecutorList.add(new ThreadPoolExecutor(
+                    1, 1, 1, TimeUnit.SECONDS,
+                    new ArrayBlockingQueue<>(20),
+                    ThreadPoolUtil.namedThreadFactory("mergerPool:" + i),
+                    new ThreadPoolExecutor.AbortPolicy())); //避免CallerRunsPolicy传递阻塞
         }
     }
 

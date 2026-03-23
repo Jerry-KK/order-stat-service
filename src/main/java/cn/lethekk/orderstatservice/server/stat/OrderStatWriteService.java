@@ -29,15 +29,11 @@ public class OrderStatWriteService {
     /**
      * 落库线程池:io阻塞，压力在DB
      */
-    private final ThreadPoolExecutor writeExecutor = new ThreadPoolExecutor(1, 1, 1, TimeUnit.SECONDS, new ArrayBlockingQueue<>(ThreadNumUtil.getCpuNum()),
-            new ThreadFactory() {
-                private final AtomicInteger threadNumber = new AtomicInteger(1);
-
-                @Override
-                public Thread newThread(Runnable r) {
-                    return new Thread(r, "writePool-" + threadNumber.getAndIncrement());
-                }
-            }, new ThreadPoolExecutor.CallerRunsPolicy());
+    private final ThreadPoolExecutor writeExecutor = new ThreadPoolExecutor(
+            1, 1, 1, TimeUnit.SECONDS,
+            new ArrayBlockingQueue<>(ThreadNumUtil.getCpuNum()),
+            ThreadPoolUtil.namedThreadFactory("writePool"),
+            new ThreadPoolExecutor.CallerRunsPolicy());
 
     //异步非阻塞
     public void handle(List<OrderStatBO> list) {

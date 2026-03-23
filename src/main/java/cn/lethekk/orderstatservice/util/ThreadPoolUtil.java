@@ -4,7 +4,9 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.Collection;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * @Author Lethekk
@@ -56,5 +58,22 @@ public class ThreadPoolUtil {
             }
         });
         log.info("线程池组 {} 关闭完成", groupName);
+    }
+
+    /**
+     * 创建一个带命名前缀的线程工厂
+     * * @param poolName 线程池名称前缀
+     *
+     * @return 线程工厂实例
+     */
+    public static ThreadFactory namedThreadFactory(String poolName) {
+        return new ThreadFactory() {
+            private final AtomicInteger threadNumber = new AtomicInteger(1);
+
+            @Override
+            public Thread newThread(Runnable r) {
+                return new Thread(r, poolName + "-" + threadNumber.getAndIncrement());
+            }
+        };
     }
 }

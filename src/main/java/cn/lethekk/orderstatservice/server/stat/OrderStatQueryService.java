@@ -46,16 +46,11 @@ public class OrderStatQueryService {
     /**
      * 外部查询线程池:网络阻塞
      */
-    private final ThreadPoolExecutor queryExecutor = new ThreadPoolExecutor(threadNum, threadNum, 1, TimeUnit.SECONDS, new ArrayBlockingQueue<>(256),
-            new ThreadFactory() {
-
-                private final AtomicInteger threadNumber = new AtomicInteger(1);
-
-                @Override
-                public Thread newThread(Runnable r) {
-                    return new Thread(r, "queryPool-" + threadNumber.getAndIncrement());
-                }
-            }, new ThreadPoolExecutor.CallerRunsPolicy());//CallerRunsPolicy天然背压
+    private final ThreadPoolExecutor queryExecutor = new ThreadPoolExecutor(
+            threadNum, threadNum, 1, TimeUnit.SECONDS,
+            new ArrayBlockingQueue<>(120),
+            ThreadPoolUtil.namedThreadFactory("queryPool"),
+            new ThreadPoolExecutor.CallerRunsPolicy());//CallerRunsPolicy天然背压
 
     /**
      * 处理event
