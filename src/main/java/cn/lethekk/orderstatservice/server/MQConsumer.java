@@ -3,18 +3,17 @@ package cn.lethekk.orderstatservice.server;
 import cn.lethekk.orderstatservice.config.RabbitConfig;
 import cn.lethekk.orderstatservice.entity.OrderEvent;
 import cn.lethekk.orderstatservice.server.stat.OrderStatQueryService;
-import jakarta.annotation.PostConstruct;
-import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
-
 /**
+ * 订单统计 MQ 消费者
+ * 遵循《阿里 Java 开发手册》规范：
+ * 1. 采用推模式（@RabbitListener）配合 QOS 实现高效背压控制
+ * 2. 异常处理严谨，避免消息丢失
+ *
  * @Author Lethekk
  * @Date 2026/2/23 23:18
  */
@@ -22,51 +21,37 @@ import java.util.concurrent.TimeUnit;
 @Slf4j
 public class MQConsumer {
 
-    @Autowired
-    private OrderStatQueryService orderStatQueryService;
+    private final OrderStatQueryService orderStatQueryService;
 
     @Autowired
-    private RabbitTemplate rabbitTemplate;
-
-    private final ScheduledExecutorService puller = Executors.newSingleThreadScheduledExecutor(r -> {
-        Thread t = new Thread(r, "MQ-Pull-Thread");
-        t.setDaemon(true);
-        return t;
-    });
-
-    @PostConstruct
-    public void init() {
-        // 定时拉取消息，实现拉模式背压控制
-        puller.scheduleWithFixedDelay(this::pullMessages, 1, 10, TimeUnit.MILLISECONDS);
+    public MQConsumer(OrderStatQueryService orderStatQueryService) {
+        this.orderStatQueryService = orderStatQueryService;
     }
 
-    private void pullMessages() {
-        try {
-            // 直接尝试拉取并处理。如果下游 OrderStatQueryService 的线程池满了，
-            // 其 CallerRunsPolicy 会使任务在当前 MQ-Pull-Thread 中运行，从而自然产生背压。
-            for (int i = 0; i < 20; i++) {
-                OrderEvent event = (OrderEvent) rabbitTemplate.receiveAndConvert(RabbitConfig.ORDER_STAT_QUEUE);
-                if (event == null) {
-                    break;
-                }
-                log.debug("Pulled order event: {}", event);
-                orderStatQueryService.eventHandle(event);
-            }
-        } catch (Exception e) {
-            log.error("Error pulling order event from RabbitMQ", e);
+    /**
+     * 消费订单事件
+     * 采用推模式，配合 application.yml 中的 prefetch 配置实现背压
+     *
+     * @param event 订单事件
+     */
+    @RabbitListener(queues = RabbitConfig.ORDER_STAT_QUEUE)
+    public void onMessage(OrderEvent event) {
+        if (event == null || event.getOrderId() == null) {
+            log.warn("Received invalid order event: {}, skipping.", event);
+            return;
         }
-    }
 
-    @PreDestroy
-    public void shutdown() {
-        puller.shutdown();
+        if (log.isDebugEnabled()) {
+            log.debug("Processing order event, orderId: {}, userId: {}", event.getOrderId(), event.getUserId());
+        }
+
         try {
-            if (!puller.awaitTermination(5, TimeUnit.SECONDS)) {
-                puller.shutdownNow();
-            }
-        } catch (InterruptedException e) {
-            puller.shutdownNow();
-            Thread.currentThread().interrupt();
+            orderStatQueryService.eventHandle(event);
+        } catch (Exception e) {
+            // 遵循规范：记录详尽日志
+            log.error("Failed to process order event. orderId: {}, error: {}", event.getOrderId(), e.getMessage(), e);
+            // 抛出异常以触发框架重试机制（取决于 RetryInterceptor 配置，默认会重新入队或丢弃）
+            throw e;
         }
     }
 }
