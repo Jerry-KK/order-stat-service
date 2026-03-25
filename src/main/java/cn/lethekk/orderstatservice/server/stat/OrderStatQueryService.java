@@ -163,7 +163,8 @@ public class OrderStatQueryService {
      */
     public void mockDelay() {
         try {
-            long delay = ThreadLocalRandom.current().nextLong(50L, 520L);
+            // 模拟真实 RPC 调用范围：10ms ~ 100ms
+            long delay = ThreadLocalRandom.current().nextLong(10L, 100L);
             TimeUnit.MILLISECONDS.sleep(delay);
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
