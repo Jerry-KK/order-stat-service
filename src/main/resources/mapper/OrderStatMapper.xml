@@ -14,4 +14,11 @@
         orderCount = orderCount + VALUES(orderCount)
     </insert>
 
+    <select id="selectRecent" resultType="cn.lethekk.orderstatservice.entity.OrderStatEntity">
+        SELECT dateTime, shopId, userId, orderCount, shopName, userName, vip
+        FROM order_stat
+        ORDER BY dateTime DESC
+        LIMIT 50
+    </select>
+
 </mapper>

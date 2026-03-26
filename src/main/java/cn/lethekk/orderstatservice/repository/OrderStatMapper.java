@@ -14,4 +14,6 @@ public interface OrderStatMapper {
 
     int insertList(List<OrderStatEntity> entityList);
 
+    List<OrderStatEntity> selectRecent();
+
 }

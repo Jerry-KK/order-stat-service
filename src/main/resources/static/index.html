@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>订单统计展示</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- ECharts -->
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <style>
+        .card { @apply bg-white rounded-lg shadow-md p-6; }
+        .table-header { @apply px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors; }
+        .table-cell { @apply px-6 py-4 whitespace-nowrap text-sm text-gray-900; }
+        .filter-select { @apply block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md border; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen font-sans">
+    <div class="container mx-auto px-4 py-8">
+        <header class="mb-8 flex justify-between items-center">
+            <h1 class="text-3xl font-bold text-gray-800">订单统计看板</h1>
+            <div class="flex items-center space-x-4">
+                <span class="text-sm text-gray-500" id="lastUpdated">最后更新: -</span>
+                <button onclick="fetchData()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm transition-colors duration-200">
+                    手动刷新
+                </button>
+            </div>
+        </header>
+
+        <!-- Filters Section -->
+        <div class="card mb-8">
+            <div class="flex flex-wrap items-center gap-4">
+                <div class="w-full md:w-64">
+                    <label for="shopFilter" class="block text-sm font-medium text-gray-700 mb-1">按商圈过滤</label>
+                    <select id="shopFilter" class="filter-select" onchange="handleFilterChange()">
+                        <option value="">全部商圈</option>
+                    </select>
+                </div>
+                <div class="flex-grow"></div>
+                <div class="text-sm text-gray-500">
+                    提示：点击表格标题“订单数”可进行排序
+                </div>
+            </div>
+        </div>
+
+        <!-- Stats Overview -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div class="card">
+                <p class="text-sm text-gray-500 mb-1">当前筛选总订单量</p>
+                <p class="text-3xl font-bold text-blue-600" id="totalOrders">0</p>
+            </div>
+            <div class="card">
+                <p class="text-sm text-gray-500 mb-1">独立用户数</p>
+                <p class="text-3xl font-bold text-green-600" id="uniqueUsers">0</p>
+            </div>
+            <div class="card">
+                <p class="text-sm text-gray-500 mb-1">商圈数量</p>
+                <p class="text-3xl font-bold text-purple-600" id="totalShops">0</p>
+            </div>
+        </div>
+
+        <!-- Charts Section -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+            <div class="card">
+                <h2 class="text-xl font-semibold mb-4">订单趋势 (当前筛选)</h2>
+                <div id="trendChart" style="height: 350px;"></div>
+            </div>
+            <div class="card">
+                <h2 class="text-xl font-semibold mb-4">用户订单占比 (Top 10)</h2>
+                <div id="userChart" style="height: 350px;"></div>
+            </div>
+        </div>
+
+        <!-- Table Section -->
+        <div class="card overflow-hidden">
+            <h2 class="text-xl font-semibold mb-4">详细统计列表</h2>
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="table-header">统计时间</th>
+                            <th class="table-header">商圈名称</th>
+                            <th class="table-header">用户名称</th>
+                            <th class="table-header" onclick="toggleSort('orderCount')">
+                                订单数 
+                                <span id="sortIcon" class="ml-1 text-gray-400">↕</span>
+                            </th>
+                            <th class="table-header">会员状态</th>
+                        </tr>
+                    </thead>
+                    <tbody id="statsTable" class="bg-white divide-y divide-gray-200">
+                        <!-- Data rows will be inserted here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let trendChart = null;
+        let userChart = null;
+        let rawData = [];
+        let sortConfig = { key: null, direction: 'desc' }; // default null to keep raw order (time desc)
+
+        function initCharts() {
+            trendChart = echarts.init(document.getElementById('trendChart'));
+            userChart = echarts.init(document.getElementById('userChart'));
+        }
+
+        async function fetchData() {
+            try {
+                const response = await fetch('api/order-stats');
+                const data = await response.json();
+                rawData = data;
+                updateShopFilter(data);
+                applyFilterAndSort();
+                document.getElementById('lastUpdated').innerText = `最后更新: ${new Date().toLocaleTimeString()}`;
+            } catch (error) {
+                console.error('Failed to fetch stats:', error);
+            }
+        }
+
+        function updateShopFilter(data) {
+            const shopSelect = document.getElementById('shopFilter');
+            const currentValue = shopSelect.value;
+            
+            // Get unique shops
+            const shops = new Map();
+            data.forEach(item => {
+                if (item.shopId) {
+                    shops.set(item.shopId, item.shopName || `商圈 ${item.shopId}`);
+                }
+            });
+
+            // Clear except first
+            shopSelect.innerHTML = '<option value="">全部商圈</option>';
+            Array.from(shops.entries())
+                .sort((a, b) => a[1].localeCompare(b[1]))
+                .forEach(([id, name]) => {
+                    const option = document.createElement('option');
+                    option.value = id;
+                    option.textContent = name;
+                    if (id.toString() === currentValue) option.selected = true;
+                    shopSelect.appendChild(option);
+                });
+        }
+
+        function handleFilterChange() {
+            applyFilterAndSort();
+        }
+
+        function toggleSort(key) {
+            if (sortConfig.key === key) {
+                sortConfig.direction = sortConfig.direction === 'asc' ? 'desc' : 'asc';
+            } else {
+                sortConfig.key = key;
+                sortConfig.direction = 'desc';
+            }
+            
+            const icon = document.getElementById('sortIcon');
+            icon.innerText = sortConfig.direction === 'asc' ? '↑' : '↓';
+            icon.classList.remove('text-gray-400');
+            icon.classList.add('text-blue-600');
+            
+            applyFilterAndSort();
+        }
+
+        function applyFilterAndSort() {
+            let filteredData = [...rawData];
+
+            // 1. Filter
+            const shopId = document.getElementById('shopFilter').value;
+            if (shopId) {
+                filteredData = filteredData.filter(item => item.shopId.toString() === shopId);
+            }
+
+            // 2. Sort
+            if (sortConfig.key) {
+                filteredData.sort((a, b) => {
+                    const valA = a[sortConfig.key];
+                    const valB = b[sortConfig.key];
+                    return sortConfig.direction === 'asc' ? valA - valB : valB - valA;
+                });
+            }
+
+            updateUI(filteredData);
+            updateCharts(filteredData);
+        }
+
+        function updateUI(data) {
+            const tableBody = document.getElementById('statsTable');
+            tableBody.innerHTML = '';
+
+            let totalOrders = 0;
+            const users = new Set();
+            const shops = new Set();
+
+            data.forEach(item => {
+                totalOrders += item.orderCount;
+                users.add(item.userId);
+                shops.add(item.shopId);
+
+                const row = `
+                    <tr>
+                        <td class="table-cell">${item.dateTime.replace('T', ' ')}</td>
+                        <td class="table-cell">${item.shopName || item.shopId}</td>
+                        <td class="table-cell">
+                            <span class="flex items-center">
+                                ${item.userName || '未知用户'}
+                                ${item.vip ? '<span class="ml-2 px-2 py-0.5 text-xs bg-yellow-100 text-yellow-800 rounded-full font-semibold">VIP</span>' : ''}
+                            </span>
+                        </td>
+                        <td class="table-cell font-bold text-blue-600">${item.orderCount}</td>
+                        <td class="table-cell">${item.vip ? '是' : '否'}</td>
+                    </tr>
+                `;
+                tableBody.insertAdjacentHTML('beforeend', row);
+            });
+
+            document.getElementById('totalOrders').innerText = totalOrders.toLocaleString();
+            document.getElementById('uniqueUsers').innerText = users.size.toLocaleString();
+            document.getElementById('totalShops').innerText = shops.size.toLocaleString();
+        }
+
+        function updateCharts(data) {
+            // Trend Chart
+            const trendOption = {
+                tooltip: { trigger: 'axis' },
+                xAxis: {
+                    type: 'category',
+                    data: data.slice(0, 20).map(i => i.dateTime.split('T')[1].substring(0, 5)).reverse()
+                },
+                yAxis: { type: 'value' },
+                series: [{
+                    data: data.slice(0, 20).map(i => i.orderCount).reverse(),
+                    type: 'line',
+                    smooth: true,
+                    areaStyle: { opacity: 0.1 },
+                    itemStyle: { color: '#2563eb' }
+                }]
+            };
+            trendChart.setOption(trendOption);
+
+            // User Proportion Chart (Top 10)
+            const topUsers = [...data]
+                .sort((a, b) => b.orderCount - a.orderCount)
+                .slice(0, 10);
+            
+            const userOption = {
+                tooltip: { trigger: 'item' },
+                series: [{
+                    type: 'pie',
+                    radius: ['40%', '70%'],
+                    data: topUsers.map(u => ({
+                        name: u.userName || u.userId,
+                        value: u.orderCount
+                    }))
+                }]
+            };
+            userChart.setOption(userOption);
+        }
+
+        // Initialize
+        initCharts();
+        fetchData();
+        // Auto refresh every 30 seconds
+        setInterval(fetchData, 30000);
+
+        // Handle window resize
+        window.onresize = () => {
+            trendChart.resize();
+            userChart.resize();
+        };
+    </script>
+</body>
+</html>
