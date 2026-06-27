@@ -6,9 +6,9 @@ spring:
   application:
     name: order-stat-service
   datasource:
-    url: jdbc:mysql://localhost:3306/order_db?useSSL=false&serverTimezone=UTC
+    url: jdbc:mysql://localhost:3306/dms_order_db?useSSL=false&serverTimezone=UTC
     username: root
-    password: admin
+    password: root
     driver-class-name: com.mysql.cj.jdbc.Driver
 
 mybatis:
